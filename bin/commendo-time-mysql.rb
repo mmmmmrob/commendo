@@ -17,15 +17,28 @@ Commendo.config do |config|
 end
 cs = Commendo::ContentSet.new(key_base: key_base)
 
-$stderr.puts "Selecting #{limit} random names to use"
+$stderr.puts "Selecting #{limit} random names to use for #{key_base}"
 client = Mysql2::Client.new(Commendo.config.to_hash)
 names_to_query = client.query("SELECT DISTINCT name FROM Resources WHERE keybase = '#{key_base}' ORDER BY RAND() LIMIT #{limit}")
 names_to_query = names_to_query.map { |r| r['name'] }
 
+def time_this
+  start = Time.now
+  yield
+  finish = Time.now
+  finish.to_f - start.to_f
+end
+
 pbar = ProgressBar.new('Querying similar_to', names_to_query.length)
-names_to_query.each do |name|
-  cs.similar_to(name)
+times = names_to_query.map do |name|
   pbar.inc
+  time_this { cs.similar_to(name) }
 end
 pbar.finish
+mean = times.inject(0, :+) / times.length.to_f
+$stderr.puts "Mean timing = #{mean.round(3)}"
+times.map! { |time| time.round(2) }
+times = times.group_by { |time| time }
+times = Hash[times.map { |time, times| [time, times.length] }]
 
+puts times.map { |time, count| "#{key_base}\t#{time}\t#{count}" }
